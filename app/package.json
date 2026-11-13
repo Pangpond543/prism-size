@@ -1,0 +1,11 @@
+{
+  "name": "prism-disk-atlas",
+  "productName": "Prism Size",
+  "version": "1.0.0",
+  "description": "Prism Size — glass disk atlas: scan, visualise and manage files on this machine",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT"
+}

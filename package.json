@@ -1,0 +1,38 @@
+{
+  "name": "prism-size-workspace",
+  "private": true,
+  "description": "Dev workspace for Prism Size — the application itself lives in app/",
+  "scripts": {
+    "start": "electron app",
+    "build:scanner": "cargo build --release --manifest-path app/scanner/Cargo.toml",
+    "dist": "npm run build:scanner && electron-builder --win nsis portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.prism.size",
+    "productName": "Prism Size",
+    "electronVersion": "45.3.1",
+    "directories": { "app": "app", "buildResources": "build", "output": "dist" },
+    "files": ["**/*", "!scanner/**", "!**/*.md"],
+    "extraResources": [
+      { "from": "app/scanner/target/release/prism-scan.exe", "to": "bin/prism-scan.exe" }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": ["nsis", "portable"],
+      "artifactName": "Prism-Size-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Prism-Size-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Prism-Size-${version}-Portable.${ext}"
+    }
+  }
+}

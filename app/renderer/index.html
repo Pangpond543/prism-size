@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Prism Size</title>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="refract" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006 0.011" numOctaves="2" seed="11" result="noise"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"/>
+      <feDisplacementMap in="blur" in2="noise" scale="70" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<div id="app">
+  <!-- ───────────── title bar ───────────── -->
+  <header id="titlebar" class="glass refract">
+    <div class="brand tb-drag">
+      <div class="prism-logo"><i></i><i></i><i></i></div>
+      <span class="brand-name">Prism Size</span>
+    </div>
+    <div id="crumbs" class="crumbs"></div>
+    <div class="tb-drag tb-fill"></div>
+    <div class="tb-actions">
+      <button class="pill-btn" id="btn-newscan" title="สแกนตำแหน่งอื่น"><span data-icon="radar"></span><span>สแกนใหม่</span></button>
+      <div class="lang-switch" id="lang-switch" title="ภาษา / Language"><i></i><button data-lang="th">TH</button><button data-lang="en">EN</button></div>
+      <button class="icon-btn" id="btn-theme" title="โหมดมืด / สว่าง"><span data-icon="moon"></span></button>
+      <button class="icon-btn" id="btn-info" title="เกี่ยวกับ Prism Size"><span data-icon="info"></span></button>
+      <div class="win-btns">
+        <button id="win-min" title="ย่อ"><span data-icon="min"></span></button>
+        <button id="win-max" title="ขยาย"><span data-icon="max"></span></button>
+        <button id="win-close" class="danger" title="ปิด"><span data-icon="x"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ───────────── dock ───────────── -->
+  <nav id="dock-wrap"><div id="dock" class="glass refract">
+    <div class="dock-grip" title="ลากเพื่อย้ายแถบนี้"></div>
+    <button class="dock-btn" data-view="tree"><span data-icon="tree"></span><em>ต้นไม้อวกาศ</em></button>
+    <button class="dock-btn" data-view="treemap"><span data-icon="grid"></span><em>Treemap</em></button>
+    <button class="dock-btn" data-view="sunburst"><span data-icon="sun"></span><em>Sunburst</em></button>
+    <button class="dock-btn" data-view="dashboard"><span data-icon="chart"></span><em>แดชบอร์ด</em></button>
+    <i class="dock-sep"></i>
+    <button class="dock-btn" data-view="apps"><span data-icon="apps"></span><em>โปรแกรมที่ติดตั้ง</em></button>
+    <button class="dock-btn" data-view="cleaner"><span data-icon="sparkle"></span><em>ทำความสะอาด</em></button>
+    <button class="dock-btn" data-view="search"><span data-icon="search"></span><em>ค้นหา</em></button>
+    <button class="dock-btn" data-view="shield"><span data-icon="shield"></span><em>สแกนไวรัส</em></button>
+  </div></nav>
+
+  <!-- ───────────── stage ───────────── -->
+  <main id="stage">
+    <section class="view canvas-view" id="v-tree"><canvas id="tree-canvas"></canvas>
+      <div class="view-hint glass">คลิกโฟลเดอร์เพื่อกางกิ่ง · ดับเบิลคลิกเพื่อหุบ · ลากลูกแก้วไปวางบนโฟลเดอร์อื่นเพื่อ<b>ย้ายไฟล์จริง</b> · Ctrl+คลิก หรือ Shift+ลาก เพื่อเลือกหลายอัน</div>
+      <div class="tree-tools glass">
+        <button class="chip" id="proj-media" title="ฉายภาพตัวอย่างจาง ๆ ลงในลูกแก้วของไฟล์รูปและวิดีโอ"><span data-icon="image"></span><span>ฉายภาพ / วิดีโอ</span></button>
+        <button class="chip" id="proj-icon" title="ฉายโลโก้ของไฟล์ชนิดอื่น ๆ ลงในลูกแก้ว"><span data-icon="badge"></span><span>ฉายโลโก้ไฟล์</span></button>
+      </div>
+    </section>
+    <section class="view canvas-view" id="v-treemap"><canvas id="treemap-canvas"></canvas></section>
+    <section class="view canvas-view" id="v-sunburst"><canvas id="sunburst-canvas"></canvas></section>
+    <section class="view scroll-view" id="v-dashboard"><div class="page" id="dashboard"></div></section>
+    <section class="view scroll-view" id="v-apps"><div class="page" id="apps"></div></section>
+    <section class="view scroll-view" id="v-cleaner"><div class="page" id="cleaner"></div></section>
+    <section class="view scroll-view" id="v-search"><div class="page" id="search"></div></section>
+    <section class="view scroll-view" id="v-shield"><div class="page" id="shield"></div></section>
+  </main>
+
+  <!-- ───────────── inspector ───────────── -->
+  <aside id="insp-wrap"><div id="inspector" class="glass">
+    <div class="insp-head" id="insp-handle">
+      <span class="insp-title">รายละเอียด</span>
+      <button class="icon-btn" id="insp-close" title="ปิด"><span data-icon="x"></span></button>
+    </div>
+    <div id="insp-body"></div>
+  </div></aside>
+
+  <!-- ───────────── status bar ───────────── -->
+  <footer id="status-wrap"><div id="statusbar" class="glass refract">
+    <div class="st-grip" title="ลากเพื่อย้าย"></div>
+    <span id="st-text">ยังไม่ได้สแกน</span>
+    <i class="st-sep"></i>
+    <div class="st-zoom" id="st-zoom">
+      <button class="icon-btn" id="zoom-out" title="ซูมออก"><span data-icon="minus"></span></button>
+      <button class="icon-btn" id="zoom-fit" title="จัดให้พอดีจอ"><span data-icon="fit"></span></button>
+      <button class="icon-btn" id="zoom-in" title="ซูมเข้า"><span data-icon="plus"></span></button>
+      <i class="st-sep"></i>
+    </div>
+    <button class="pill-btn small" id="btn-undo" disabled title="ย้อนกลับ (Ctrl+Z)"><span data-icon="undo"></span><span>ย้อนกลับ</span></button>
+    <button class="pill-btn small" id="btn-rescan" title="สแกนใหม่เพื่ออัปเดตข้อมูล (F5)"><span data-icon="refresh"></span><span>อัปเดต</span></button>
+  </div></footer>
+</div>
+
+<!-- ───────────── welcome ───────────── -->
+<div id="welcome" class="overlay">
+  <div class="welcome-inner">
+    <div class="hero">
+      <div class="prism-logo big"><i></i><i></i><i></i></div>
+      <h1>Prism Size</h1>
+      <p>แผนที่แก้วของทุกไฟล์ในเครื่องคุณ — มองเห็น จับ ลาก และจัดระเบียบได้จริง</p>
+    </div>
+    <div id="saved-wrap" class="hidden">
+      <div class="section-label">ผลสแกนที่บันทึกไว้ — เปิดได้ทันที</div>
+      <div id="saved-cards" class="saved-cards"></div>
+    </div>
+    <div class="section-label">เลือกไดรฟ์ที่จะสแกน</div>
+    <div id="drive-cards" class="drive-cards"></div>
+    <div class="section-label">หรือเริ่มจากโฟลเดอร์</div>
+    <div id="quick-cards" class="quick-cards"></div>
+    <div class="engine-note" id="engine-note"></div>
+  </div>
+</div>
+
+<!-- ───────────── scanning ───────────── -->
+<div id="scanning" class="overlay hidden">
+  <div class="scan-card glass">
+    <div class="scan-orb"><i></i><i></i><i></i><b></b></div>
+    <div class="scan-title">กำลังสแกน…</div>
+    <div class="scan-stats">
+      <div><strong id="sc-size">0 B</strong><span>ขนาดรวม</span></div>
+      <div><strong id="sc-files">0</strong><span>ไฟล์</span></div>
+      <div><strong id="sc-dirs">0</strong><span>โฟลเดอร์</span></div>
+      <div><strong id="sc-time">0.0s</strong><span>เวลา</span></div>
+    </div>
+    <div class="scan-path" id="sc-path"></div>
+    <div class="scan-foot"><span class="badge" id="sc-engine">Node</span><button class="pill-btn" id="sc-cancel">ยกเลิก</button></div>
+  </div>
+</div>
+
+<div id="tooltip" class="glass tip hidden"></div>
+<div id="ghost" class="glass ghost hidden"></div>
+<div id="ctx" class="glass ctx hidden"></div>
+<div id="toasts"></div>
+<div id="modal" class="overlay hidden"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

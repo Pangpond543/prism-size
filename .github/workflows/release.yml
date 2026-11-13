@@ -1,0 +1,22 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: npm run dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*-Setup.exe
+            dist/*-Portable.exe
+          generate_release_notes: true

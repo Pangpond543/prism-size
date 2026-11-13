@@ -1,0 +1,13 @@
+[package]
+name = "prism-scan"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
