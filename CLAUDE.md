@@ -18,7 +18,7 @@ A change is NOT delivered until `npm run dist` has rebuilt that folder (close Pr
   (the shell inherits `ELECTRON_RUN_AS_NODE`; without `-u` Electron silently runs as Node and no window appears).
 - Use `--user-data-dir=C:\Users\pigvi\PrismSizeTest` for test runs, so test scans/theme don't land in (virtual) AppData.
 - One instance at a time (parallel instances fight over the GPU cache → blank window).
-- Release: bump `version` in `app/package.json`, push tag `vX.Y.Z` → GitHub Actions (`.github/workflows/release.yml`) builds and attaches Setup + Portable. Repo: `Pangpond543/prism-size` (`app/prism.config.json`). This is the only Prism app in git so far.
+- Release: bump `version` in `app/package.json`, push tag `vX.Y.Z` → GitHub Actions (`.github/workflows/release.yml`) builds and attaches Setup + Portable. Repo: `Pangpond543/prism-size` (`app/prism.config.json`). Prism Cam is in git too (`Pangpond543/prism-cam`). Release notes (TH + EN) go in `docs/release-notes-<ver>.md`; after CI creates the release, `gh release edit v<ver> --notes-file` them.
 
 ## Test hooks (env vars, read in `app/main.js` → `sys:info`)
 `PRISM_SHOT=<png>` + `PRISM_SHOT_DELAY=<ms>` screenshot then quit · `PRISM_AUTOSCAN=<folder>` · `PRISM_VIEW=tree|treemap|sunburst|dashboard|apps|cleaner|search|shield` · `PRISM_LANG=th|en` · `PRISM_NOCACHE=1` (don't reopen saved scan) · `PRISM_DEBUG=1` (renderer console → stdout) · `PRISM_ACT=expand,deep,select,proj,dark,light,info`.

@@ -2,6 +2,7 @@
 
 Format: `YYYY-MM-DD — what changed — why`. Add a line after every fix/feature.
 
+- 2026-11-23 — **v1.1.0 released** (GitHub Actions builds Setup + Portable on tag `v1.1.0`). Notes TH + EN in `docs/release-notes-1.1.0.md`; they tell 1.0.0 users to download once by hand (1.0.0's updater could not download). CLAUDE.md + docs/ are now in git.
 - 2026-11-23 — **Classic look + appearance menu** (design for user review before the rest of the suite). The moon/sun button now opens a small menu: Theme (Light / Dark) and Style (Glass / Classic); picks apply at once, menu stays open, Esc / click outside closes, follows the button on resize. Classic = flat solid panels (Discord-like greys), no WebGL background (loop fully stopped), no refraction/blur/glints, no looping decoration or hover lift/bounce, entrances are a quick fade; tree dust off. Saved as `prism.look`. Test hooks: `classic`, `glass`, `themepop`. — user wanted a calm, use-focused mode.
 - 2026-11-23 — Title-bar logo: outer square swings again (with the other two) and the glyph is ~25 % smaller. — user review.
 - 2026-11-22 — **Logo v2** (user review): app icon = the layered tile at every size (no plain small version) with a bigger glyph; title-bar logo = squares + glyph with no tile, 26 → 44 px, outer square still. — user wanted the big icon everywhere and a much bigger logo in the bar.
