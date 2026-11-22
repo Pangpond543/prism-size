@@ -1,0 +1,18 @@
+# Prism Size — changelog (newest first)
+
+Format: `YYYY-MM-DD — what changed — why`. Add a line after every fix/feature.
+
+- 2026-11-23 — **Classic look + appearance menu** (design for user review before the rest of the suite). The moon/sun button now opens a small menu: Theme (Light / Dark) and Style (Glass / Classic); picks apply at once, menu stays open, Esc / click outside closes, follows the button on resize. Classic = flat solid panels (Discord-like greys), no WebGL background (loop fully stopped), no refraction/blur/glints, no looping decoration or hover lift/bounce, entrances are a quick fade; tree dust off. Saved as `prism.look`. Test hooks: `classic`, `glass`, `themepop`. — user wanted a calm, use-focused mode.
+- 2026-11-23 — Title-bar logo: outer square swings again (with the other two) and the glyph is ~25 % smaller. — user review.
+- 2026-11-22 — **Logo v2** (user review): app icon = the layered tile at every size (no plain small version) with a bigger glyph; title-bar logo = squares + glyph with no tile, 26 → 44 px, outer square still. — user wanted the big icon everywhere and a much bigger logo in the bar.
+- 2026-11-21 — **Own logo + "by 543" + update nudge** (suite-wide). Logo keeps the Prism family shape but now has this app's colour and a white pie-chart glyph (title bar, About, exe/taskbar icon; generated from `tools/brand/`). Faint "by 543" after the name in the title bar (the user's personal mark). Quiet update check 4 s after start (+ every 6 h): newer version → pink dot with ripple on the Info button and a glass chip "New version vX · Update" sliding out once per version; clicking opens Info already on "Update now". Test hook: `updfake`. — user: logos all looked the same, wanted 543 visible, and an eye-catching update hint.
+- 2026-11-20 — Bug hunt: **delete safety** — `fs:trash` now checks whether Windows would delete for good (USB/network drive, Recycle Bin set to "delete immediately", item bigger than the bin) and the UI asks for an explicit permanent-delete confirm ( in core.js; also used by Cleaner duplicates/old files and Shield) — before, "Recycle Bin" silently became permanent on those drives.
+- 2026-11-20 — Bug hunt: locked folders extended (OneDrive root, Pictures/Music/Videos, other users' profiles, UNC share roots, Prism Size's own install folder).
+- 2026-11-20 — Bug hunt: updater could never download a release — GitHub now redirects to `release-assets.githubusercontent.com`, which the host allow-list blocked; added. Also a dropped connection no longer leaves a truncated installer (byte count vs Content-Length checked).
+- 2026-11-20 — Bug hunt: second launch now focuses the open window (single-instance lock) instead of opening a blank second copy.
+- 2026-11-20 — Bug hunt: if the Rust scanner dies without a result the scan falls back to the Node walker (cancel still cancels); otherwise shows an error instead of looking like a cancel.
+- 2026-11-20 — Bug hunt: duplicate finder skips online-only OneDrive placeholders (hashing them would download them), program folders and program file types (earlier uncommitted work kept); nothing is pre-selected.
+- 2026-11-15 — Boot skips saved scans > 400 000 files; opening one by hand warns first — user reported "freeze at startup" (a whole-C:\ scan blocked the renderer ~50 s).
+- 2026-11-15 — Desktop shortcut now points at `dist\win-unpacked\Prism Size.exe` (no more `.bat` / cmd window) — user asked for a real exe.
+- 2026-11-14 — v1.0.0 committed to git, GitHub release workflow added (`Pangpond543/prism-size`).
+- 2026-11-13 — App created: Electron + Rust scanner, views tree/treemap/sunburst/dashboard/apps/cleaner/search/shield, TH/EN, dark mode, updater.

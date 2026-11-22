@@ -2,13 +2,14 @@
 import { T } from './i18n.js';
 import {
   state, bus, api, fmt, fmtNum, fmtDate, ago, esc, pct, toast, confirmBox, displayName, pathOf, findNode,
-  isDir, fileCount, trashNode, select, CATS, catOf, rgb,
+  isDir, fileCount, trashNode, trashPath, select, CATS, catOf, rgb,
 } from './core.js';
 import { icon } from './icons.js';
 import { locate } from './dashboard.js';
 
 let el, active = false, tab = 'junk';
 let junk = null, junkBusy = false, junkSel = new Set();
+let dupeInfo = null;
 let dupes = null, dupeBusy = false, dupeRoot = null, dupeMin = 1, dupeProg = null, dupeSel = new Set();
 const YEAR = 365 * 86400;
 
@@ -77,7 +78,8 @@ async function runDupes() {
   const res = await api.invoke('dupes:start', { root: pathOf(dupeRoot), minSize: dupeMin * 1024 * 1024 });
   dupeBusy = false;
   dupes = res ? res.groups : null;
-  if (dupes) autoSelect();
+  dupeInfo = res || null;
+  // nothing is pre-selected: the user decides what goes to the Recycle Bin
   render();
 }
 function autoSelect() { // keep the newest copy of each group, mark the rest
@@ -99,13 +101,14 @@ function renderDupes(box) {
   </div>`;
   let body;
   if (dupeBusy) body = `<div class="card glass"><h3 id="dp-phase">${T`กำลังรวบรวมรายชื่อไฟล์…`}</h3><div class="progress indet" id="dp-bar"><i></i></div><div class="stat-sub" id="dp-cur" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div>`;
-  else if (!dupes) body = `<div class="card glass appear">${emptyState('copy', T`ยังไม่ได้ค้นหา`, T`เปรียบเทียบเนื้อไฟล์จริงด้วยแฮช — ชื่อไม่เหมือนกันก็หาเจอ`)}</div>`;
+  else if (dupeInfo && dupeInfo.protectedRoot) body = `<div class="card glass appear">${emptyState('shield', T`โฟลเดอร์นี้เป็นที่เก็บโปรแกรม`, T`ไม่ค้นหาไฟล์ซ้ำในโฟลเดอร์ของโปรแกรม เครื่องมือ หรือแคช เพราะลบแล้วโปรแกรมจะเสีย — เลือกโฟลเดอร์เอกสาร รูป หรือวิดีโอแทน`)}</div>`;
+  else if (!dupes) body = `<div class="card glass appear">${emptyState('copy', T`ยังไม่ได้ค้นหา`, T`เปรียบเทียบเนื้อไฟล์จริงด้วยแฮช — ชื่อไม่เหมือนกันก็หาเจอ`)}<p class="muted" style="text-align:center;margin-top:-6px">${T`ข้ามโฟลเดอร์โปรแกรม (AppData, Program Files, node_modules ฯลฯ) และไฟล์โปรแกรม (.exe, .dll ฯลฯ) ให้อัตโนมัติ`}</p></div>`;
   else if (!dupes.length) body = `<div class="card glass appear">${emptyState('check', T`ไม่พบไฟล์ซ้ำ`, T`โฟลเดอร์นี้สะอาดดี`)}</div>`;
   else {
     const waste = dupes.reduce((s, g) => s + g.size * (g.files.length - 1), 0);
     body = `<div class="grid g-3" style="margin-bottom:16px">
       <div class="card glass appear"><h3>${T`พื้นที่ที่เสียไปกับไฟล์ซ้ำ`}</h3><div class="stat-big">${fmt(waste)}</div><div class="stat-sub">${T`${fmtNum(dupes.length)} กลุ่ม`}</div></div>
-      <div class="card glass appear span-2" style="--i:1;display:flex;align-items:center;justify-content:space-between;gap:16px"><div><h3>${T`ที่เลือกไว้เพื่อลบ`}</h3><div class="stat-big" id="dp-sel">${fmt(dupeSelSize())}</div><div class="stat-sub">${T`ค่าเริ่มต้น: เก็บไฟล์ที่ใหม่ที่สุดของแต่ละกลุ่มไว้`}</div></div>
+      <div class="card glass appear span-2" style="--i:1;display:flex;align-items:center;justify-content:space-between;gap:16px"><div><h3>${T`ที่เลือกไว้เพื่อลบ`}</h3><div class="stat-big" id="dp-sel">${fmt(dupeSelSize())}</div><div class="stat-sub">${T`ยังไม่ได้เลือกไฟล์ใด — ติ๊กเอง หรือกด "เลือกอัตโนมัติ" (เก็บไฟล์ใหม่สุดไว้)`}</div><div class="stat-sub">${T`ข้ามโฟลเดอร์โปรแกรม ${fmtNum((dupeInfo && dupeInfo.skippedDirs) || 0)} โฟลเดอร์เพื่อความปลอดภัย`}</div></div>
         <div style="display:flex;gap:8px"><button class="pill-btn" id="dp-auto">${T`เลือกอัตโนมัติ`}</button><button class="pill-btn" id="dp-none">${T`ไม่เลือกเลย`}</button><button class="pill-btn warn" id="dp-del">${icon('trash')}<span>${T`ย้ายไปถังรีไซเคิล`}</span></button></div></div></div>
       ${dupes.slice(0, 120).map((g, gi) => `<div class="group appear" style="--i:${Math.min(gi, 12)}"><div class="group-head"><i class="dot" style="width:12px;height:12px;border-radius:5px;background:${rgb(CATS[catOf(g.files[0].path)].color)}"></i>${esc(g.files[0].path.slice(g.files[0].path.lastIndexOf('\\') + 1))}<span class="muted">${T`${g.files.length} ไฟล์ × ${fmt(g.size)}`}</span><span class="badge hot" style="margin-left:auto">${T`เสีย ${fmt(g.size * (g.files.length - 1))}`}</span></div>
         <div class="rows">${g.files.map((f) => `<label class="row clickable"><input type="checkbox" data-p="${esc(f.path)}" ${dupeSel.has(f.path) ? 'checked' : ''}><span class="name" style="font-weight:500;font-size:12.5px">${esc(f.path)}</span><span class="muted">${fmtDate(f.m)}</span><span class="acts"><button class="icon-btn" data-reveal="${esc(f.path)}" title="${T`แสดงใน Explorer`}">${icon('reveal')}</button></span></label>`).join('')}</div></div>`).join('')}`;
@@ -128,10 +131,11 @@ function renderDupes(box) {
     const ok = await confirmBox(T`ย้าย ${fmtNum(paths.length)} ไฟล์ซ้ำไปถังรีไซเคิล?`, T`คืนพื้นที่ได้ ${fmt(dupeSelSize())}\nกู้คืนได้จากถังรีไซเคิลของ Windows`, T`ย้ายไปถังรีไซเคิล`, true);
     if (!ok) return;
     let done = 0, freed = 0, fail = 0;
+    const batch = {};
     for (const g of dupes) {
       for (const f of [...g.files]) {
         if (!dupeSel.has(f.path)) continue;
-        const r = await api.invoke('fs:trash', f.path);
+        const r = await trashPath(f.path, g.size, batch);
         if (r.ok) { done++; freed += g.size; g.files.splice(g.files.indexOf(f), 1); dupeSel.delete(f.path); } else fail++;
       }
     }
@@ -160,7 +164,7 @@ function renderOld(box) {
         const node = findNode(p);
         let ok = false;
         if (node && node.file) ok = await trashNode(node);
-        else { const res = await api.invoke('fs:trash', p); ok = res.ok; toast(ok ? T`ย้ายไปถังรีไซเคิลแล้ว` : res.error, { kind: ok ? '' : 'err' }); if (ok) bus.emit('stale'); }
+        else { const res = await trashPath(p, (m.top.find((t) => t[0] === p) || [])[1]); ok = res.ok; if (!res.skipped) toast(ok ? (res.permanent ? T`ลบถาวรแล้ว` : T`ย้ายไปถังรีไซเคิลแล้ว`) : res.error, { kind: ok ? '' : 'err' }); if (ok) bus.emit('stale'); }
         if (ok) { m.top = m.top.filter((t) => t[0] !== p); render(); }
         return;
       }

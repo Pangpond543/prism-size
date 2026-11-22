@@ -8,6 +8,7 @@ const { Worker } = require('worker_threads');
 const { spawn, execFile } = require('child_process');
 
 let win = null;
+let scanToken = null; // the scan that is allowed to finish; cleared by Cancel, replaced by a newer scan
 const tasks = new Map(); // kind -> Worker | ChildProcess
 const send = (ch, ...a) => { if (win && !win.isDestroyed()) win.webContents.send(ch, ...a); };
 
@@ -47,7 +48,17 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+// One window only: a second launch (double-click on the shortcut) brings the open window forward instead of
+// starting a second copy — two copies fight over the GPU cache and the second one shows a blank window.
+if (!app.requestSingleInstanceLock()) app.quit();
+else {
+  app.on('second-instance', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+  });
+  app.whenReady().then(() => { createWindow(); setTimeout(() => recycleInfo().catch(() => {}), 4000); });
+}
 app.on('window-all-closed', () => { killAll(); app.quit(); });
 
 function killAll() {
@@ -129,9 +140,16 @@ ipcMain.handle('scan:start', async (_e, root) => {
   const onP = (m) => send('scan:progress', m);
   const exe = rustExe();
   send('scan:engine', exe ? 'rust' : 'node');
+  const token = {};
+  scanToken = token;
   let res = exe ? await rustScan(exe, root, onP) : null;
-  if (!res && !exe) res = await runTask('scan', { root, keep: 24 }, onP);
-  if (!res) return { cancelled: true };
+  // the Rust scanner ended without a result but nobody cancelled it (crash, odd path) → finish with the Node walker
+  if (!res && scanToken === token) {
+    if (exe) { console.error('rust scanner gave no result — falling back to node'); send('scan:engine', 'node'); }
+    res = await runTask('scan', { root, keep: 24 }, onP);
+  }
+  if (!res) return scanToken === token ? { error: 'สแกนไม่สำเร็จ — ลองใหม่อีกครั้ง' } : { cancelled: true };
+  if (scanToken === token) scanToken = null;
   res.savedAt = Date.now();
   saveScan(res).catch((err) => console.error('cache save', err.message));
   return res;
@@ -253,7 +271,7 @@ ipcMain.handle('app:relaunch', () => {
   }
   app.relaunch(); app.exit(0);
 });
-ipcMain.handle('scan:cancel', () => cancelTask('scan'));
+ipcMain.handle('scan:cancel', () => { scanToken = null; return cancelTask('scan'); });
 
 function normRoot(p) {
   if (!p) return '';
@@ -313,18 +331,27 @@ function protectedRoots() {
     sysDrive + '\\$Recycle.Bin', sysDrive + '\\System Volume Information', sysDrive + '\\Recovery', sysDrive + '\\Boot',
   ].filter(Boolean).map(low);
 }
+const userPath = (k) => { try { return app.getPath(k); } catch { return ''; } };
 function exactProtected() {
-  const home = os.homedir();
+  const home = os.homedir(), e = process.env;
   return [home, path.dirname(home), path.join(home, 'AppData'), path.join(home, 'AppData', 'Local'),
     path.join(home, 'AppData', 'Roaming'), path.join(home, 'AppData', 'LocalLow'),
-    app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), __dirname].map(low);
+    // the OneDrive root: trashing it also deletes everything in the user's cloud
+    e.OneDrive, e.OneDriveConsumer, e.OneDriveCommercial,
+    ...['desktop', 'documents', 'downloads', 'pictures', 'music', 'videos'].map(userPath),
+    __dirname].filter(Boolean).map(low);
 }
+// Prism Size's own program folder (the asar / unpacked app and the scanner next to it)
+const ownRoots = () => [path.dirname(process.execPath), process.resourcesPath, __dirname].filter(Boolean).map(low);
 const inside = (p, root) => p === root || p.startsWith(root + '\\');
 function whyProtected(p) {
   const n = low(p);
-  if (/^[a-z]:$/.test(n)) return 'ไม่สามารถย้ายหรือลบไดรฟ์ทั้งลูกได้';
+  if (/^[a-z]:$/.test(n) || /^\\\\[^\\]+\\[^\\]+$/.test(n)) return 'ไม่สามารถย้ายหรือลบไดรฟ์ทั้งลูกได้';
   if (protectedRoots().some((r) => inside(n, r))) return 'เป็นโฟลเดอร์ระบบของ Windows — ล็อกไว้เพื่อความปลอดภัย';
   if (exactProtected().includes(n)) return 'เป็นโฟลเดอร์หลักของผู้ใช้ — ล็อกไว้เพื่อความปลอดภัย';
+  // C:\Users\<anyone>: another person's whole profile (or Public / Default)
+  if (low(path.dirname(n)) === low(path.dirname(os.homedir()))) return 'เป็นโฟลเดอร์หลักของผู้ใช้ — ล็อกไว้เพื่อความปลอดภัย';
+  if (ownRoots().some((r) => inside(n, r))) return 'เป็นไฟล์ของโปรแกรม Prism Size เอง — ล็อกไว้';
   return null;
 }
 
@@ -361,10 +388,50 @@ ipcMain.handle('fs:move', async (_e, { src, destDir, name }) => {
   } catch (err) { return { ok: false, error: friendly(err) }; }
 });
 
-ipcMain.handle('fs:trash', async (_e, p) => {
+// Windows silently deletes for good (no Recycle Bin) when the drive has no bin (USB stick, network share),
+// when the bin is set to "delete immediately", or when the item is bigger than the bin's maximum size.
+// fs:trash refuses those unless the user has confirmed a permanent delete ({ permanent: true }).
+let binInfo = null, binAt = 0;
+async function recycleInfo() {
+  if (binInfo && Date.now() - binAt < 60000) return binInfo;
+  const script = String.raw`
+$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$bb='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume'
+$out=@(Get-CimInstance Win32_Volume | Where-Object { $_.DriveLetter } | ForEach-Object {
+  $g=[regex]::Match($_.DeviceID,'\{[^}]+\}').Value
+  $k=if($g){Get-ItemProperty (Join-Path $bb $g)}else{$null}
+  [pscustomobject]@{d=[string]$_.DriveLetter;t=[int]$_.DriveType;cap=[double]$_.Capacity;max=$(if($k){$k.MaxCapacity}else{$null});nuke=$(if($k){$k.NukeOnDelete}else{$null})}
+})
+ConvertTo-Json -InputObject $out -Compress`;
+  const out = await ps(script);
+  let arr = null;
+  try { arr = JSON.parse(out.trim()); if (!Array.isArray(arr)) arr = [arr]; } catch { arr = null; }
+  if (arr && arr.length) { binInfo = new Map(arr.map((v) => [String(v.d).toUpperCase(), v])); binAt = Date.now(); }
+  return binInfo; // null = could not find out
+}
+async function permanentRisk(p, sizeHint) {
+  const n = path.resolve(p);
+  if (/^\\\\/.test(n)) return 'ไดรฟ์เครือข่ายไม่มีถังรีไซเคิล — ถ้าลบ จะหายถาวร กู้คืนไม่ได้';
+  const info = await recycleInfo();
+  const v = info && info.get(n.slice(0, 2).toUpperCase());
+  if (!v) return null; // unknown (e.g. PowerShell blocked) → behave as before
+  if (v.t !== 3) return 'ไดรฟ์นี้ (USB / ไดรฟ์ถอดได้ / เครือข่าย) ไม่มีถังรีไซเคิล — ถ้าลบ จะหายถาวร กู้คืนไม่ได้';
+  if (v.nuke === 1) return 'ถังรีไซเคิลของไดรฟ์นี้ตั้งไว้ให้ลบทันที — ถ้าลบ จะหายถาวร กู้คืนไม่ได้';
+  let size = Number(sizeHint) || 0;
+  if (!size) { try { const st = await fsp.stat(n); if (st.isFile()) size = st.size; } catch { /* gone */ } }
+  const maxBytes = (v.max != null ? Number(v.max) : (v.cap * 0.05) / 1048576) * 1048576;
+  if (maxBytes > 0 && size > maxBytes) return 'ใหญ่เกินกว่าที่ถังรีไซเคิลรับได้ — ถ้าลบ Windows จะลบถาวร กู้คืนไม่ได้';
+  return null;
+}
+ipcMain.handle('fs:trash', async (_e, p, opts = {}) => {
   try {
     const why = whyProtected(p);
     if (why) return { ok: false, error: why };
+    if (!opts.permanent) {
+      const risk = await permanentRisk(p, opts.size);
+      if (risk) return { ok: false, permanent: true, error: risk };
+    }
     await shell.trashItem(p);
     return { ok: true };
   } catch (err) { return { ok: false, error: friendly(err) }; }

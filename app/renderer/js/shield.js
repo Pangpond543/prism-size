@@ -1,6 +1,6 @@
 // Shield — on-demand virus scan of any folder via Windows Defender (report only).
 import { T, tr } from './i18n.js';
-import { state, bus, api, esc, pathOf, toast, fmtNum, confirmBox } from './core.js';
+import { state, bus, api, esc, pathOf, toast, fmtNum, confirmBox, trashPath } from './core.js';
 import { icon } from './icons.js';
 
 // Defender reports files inside archives as "archive.zip->inner/path"; only the outer file exists on disk.
@@ -14,8 +14,9 @@ async function removeFiles(list) {
     T`ย้ายไปถังรีไซเคิล`, true);
   if (!ok) return;
   let done = 0, err = '';
+  const batch = {};
   for (const f of list) {
-    const r = await api.invoke('fs:trash', f);
+    const r = await trashPath(f, 0, batch);
     if (r.ok) { gone.add(f); done++; } else err = r.error || err;
   }
   toast(done ? T`ย้าย ${fmtNum(done)} ไฟล์ไปถังรีไซเคิลแล้ว` + (done < list.length ? ' · ' + err : '') : err || T`ลบไม่สำเร็จ`, { kind: done ? '' : 'err' });

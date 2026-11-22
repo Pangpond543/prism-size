@@ -19,16 +19,26 @@ const store = (k, d) => { try { const v = localStorage.getItem(k); return v === 
 export const remember = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 
 // colours the canvases need to follow the light / dark theme
-export const theme = { dark: false, ink: '35,42,71', ink2: '74,83,118', paper: '255,255,255', branch: '255,255,255', dust: 1 };
+export const theme = { dark: false, classic: false, ink: '35,42,71', ink2: '74,83,118', paper: '255,255,255', branch: '255,255,255', dust: 1 };
 export function setTheme(dark) {
   Object.assign(theme, dark
     ? { dark: true, ink: '236,240,255', ink2: '176,186,226', paper: '14,18,40', branch: '170,182,255', dust: 0.55 }
     : { dark: false, ink: '35,42,71', ink2: '74,83,118', paper: '255,255,255', branch: '255,255,255', dust: 1 });
+  if (theme.classic) theme.dust = 0;
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   remember('prism.theme', dark ? 'dark' : 'light');
   bus.emit('theme', dark);
 }
 export const savedTheme = () => store('prism.theme', 'light') === 'dark';
+// look: 'glass' (moving refractive background, frosted panels, spring motion) or 'classic' (flat, still, light on the PC)
+export function setLook(classic) {
+  theme.classic = classic;
+  theme.dust = classic ? 0 : theme.dark ? 0.55 : 1;
+  document.documentElement.dataset.look = classic ? 'classic' : 'glass';
+  remember('prism.look', classic ? 'classic' : 'glass');
+  bus.emit('look', classic);
+}
+export const savedLook = () => store('prism.look', 'glass') === 'classic';
 export const state = {
   root: null,      // scanned root (dir node)
   focus: null,     // dir node the visualisations are centred on
@@ -251,21 +261,40 @@ export async function trashNodes(nodes) {
   const total = nodes.reduce((a, n) => a + n.s, 0);
   if (!(await confirmBox(T`ย้าย ${nodes.length} รายการไปถังรีไซเคิล?`, T`รวม ${fmt(total)} — กู้คืนได้จากถังรีไซเคิล`, T`ย้ายไปถังรีไซเคิล`, true))) return false;
   let done = 0;
-  for (const n of nodes) if (await trashNode(n, { quiet: true })) done++;
+  const batch = {};
+  for (const n of nodes) if (await trashNode(n, { quiet: true, batch })) done++;
   bus.emit('model');
   if (done) toast(T`ย้าย ${done} รายการไปถังรีไซเคิลแล้ว`, { label: T`เปิดถังรีไซเคิล`, action: () => api.invoke('fs:recycleBin') });
   return done > 0;
 }
 
+// fs:trash, but when Windows would delete the item for good (no Recycle Bin on that drive, bin set to
+// "delete immediately", item bigger than the bin) the user is asked first. `batch` = one shared answer for a
+// multi-item delete. → { ok, permanent?, skipped?, error? }
+export async function trashPath(p, size, batch) {
+  const r = await api.invoke('fs:trash', p, { size: size || 0 });
+  if (r.ok || !r.permanent) return r;
+  let yes;
+  if (batch && batch.permanent !== undefined) yes = batch.permanent;
+  else {
+    yes = await confirmBox(T`ลบถาวร — กู้คืนไม่ได้`, `${p}\n\n${r.error}${batch ? '\n\n' + T`คำตอบนี้ใช้กับรายการอื่นที่ลบพร้อมกันด้วย` : ''}`, T`ลบถาวร`, true);
+    if (batch) batch.permanent = yes;
+  }
+  if (!yes) return { ok: false, skipped: true, error: r.error };
+  const r2 = await api.invoke('fs:trash', p, { size: size || 0, permanent: true });
+  return r2.ok ? { ok: true, permanent: true } : r2;
+}
+
 export async function trashNode(node, opts = {}) {
   if (!node.p || node.agg) return false;
   const name = node.n;
-  const r = await api.invoke('fs:trash', pathOf(node));
-  if (!r.ok) { toast(r.error, { kind: 'err' }); return false; }
+  const r = await trashPath(pathOf(node), node.s, opts.batch);
+  if (!r.ok) { if (!r.skipped) toast(r.error, { kind: 'err' }); return false; }
   fixSelection(node);
   detach(node);
   if (opts.quiet) return true;
-  toast(T`ย้าย “${name}” ไปถังรีไซเคิลแล้ว (${fmt(node.s)})`, { label: T`เปิดถังรีไซเคิล`, action: () => api.invoke('fs:recycleBin') });
+  if (r.permanent) toast(T`ลบ “${name}” ถาวรแล้ว (${fmt(node.s)})`);
+  else toast(T`ย้าย “${name}” ไปถังรีไซเคิลแล้ว (${fmt(node.s)})`, { label: T`เปิดถังรีไซเคิล`, action: () => api.invoke('fs:recycleBin') });
   bus.emit('model');
   return true;
 }

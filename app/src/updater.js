@@ -7,7 +7,8 @@ const path = require('path');
 const os = require('os');
 const { execFile } = require('child_process');
 
-const HOSTS = new Set(['api.github.com', 'github.com', 'codeload.github.com', 'raw.githubusercontent.com', 'objects.githubusercontent.com']);
+// GitHub serves release files from release-assets.githubusercontent.com (since 2025); objects.* is the older CDN.
+const HOSTS = new Set(['api.github.com', 'github.com', 'codeload.github.com', 'raw.githubusercontent.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']);
 const validRepo = (r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r || '');
 
 function get(url, { json = false, file = null, onProgress = null } = {}, hops = 0) {
@@ -26,8 +27,11 @@ function get(url, { json = false, file = null, onProgress = null } = {}, hops = 
         const total = Number(res.headers['content-length'] || 0); let got = 0;
         const out = fs.createWriteStream(file);
         res.on('data', (c) => { got += c.length; if (onProgress) onProgress(got, total); });
+        // a dropped connection ends the stream early — never hand back a half file as if it were complete
+        res.on('aborted', () => out.destroy(new Error('download interrupted')));
+        res.on('error', (err) => out.destroy(err));
         res.pipe(out);
-        out.on('finish', () => out.close(() => resolve(file)));
+        out.on('finish', () => out.close(() => (total && got !== total ? reject(new Error('download incomplete')) : resolve(file))));
         out.on('error', reject);
         return;
       }

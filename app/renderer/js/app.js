@@ -3,7 +3,7 @@ import { T } from './i18n.js';
 import {
   state, bus, api, prepare, fmt, fmtNum, fmtPct, pct, fmtDate, ago, esc, displayName, pathOf, isDir, childrenOf,
   colorOf, rgb, CATS, catOf, extOf, select, setFocus, undo, toast, hideCtx, floaty, moveNode, trashNode, renameNode,
-  newFolder, showNodeMenu, fileCount, copyText, serialize, setTheme, savedTheme, theme, remember, trashNodes, htmlBox, lang,
+  newFolder, showNodeMenu, fileCount, copyText, serialize, setTheme, savedTheme, setLook, savedLook, clamp, theme, remember, trashNodes, htmlBox, lang,
 } from './core.js';
 import { translateDom } from './i18n.js';
 import { icon, hydrateIcons } from './icons.js';
@@ -19,7 +19,7 @@ import { initShield } from './shield.js';
 
 const $ = (id) => document.getElementById(id);
 const views = {};
-let themeIcon = () => {}, stale = false, scanStart = 0, scanTimer = 0, lastRoot = '';
+let themeIcon = () => {}, closeThemePop = () => {}, stale = false, scanStart = 0, scanTimer = 0, lastRoot = '';
 
 /* ------------------------------------------------------------------ views */
 function setView(v) {
@@ -162,7 +162,7 @@ async function showWelcome() {
   state.sys = sys;
   $('saved-wrap').classList.toggle('hidden', !saved.length);
   $('saved-cards').innerHTML = saved.slice(0, 8).map((c, i) => `
-    <div class="saved-card glass appear" style="--i:${i}" data-root="${esc(c.root)}" title="${esc(c.root)}">
+    <div class="saved-card glass appear" style="--i:${i}" data-root="${esc(c.root)}" data-files="${c.files || 0}" title="${esc(c.root)}">
       ${icon('clock')}
       <div class="saved-main"><b>${esc(/^[a-zA-Z]:\\?$/.test(c.root) ? T`ไดรฟ์ ${c.root.slice(0, 2)}` : c.root.replace(/[\\/]+$/, '').split(/[\\/]/).pop())}</b><span>${T`${fmt(c.bytes)} · ${fmtNum(c.files)} ไฟล์ · สแกน${since(c.at)}`}</span></div>
       <button class="icon-btn" data-forget title="${T`ลบผลสแกนที่บันทึกไว้นี้`}">${icon('x')}</button>
@@ -170,7 +170,12 @@ async function showWelcome() {
   document.querySelectorAll('#saved-cards .saved-card').forEach((el) => {
     el.onclick = async (e) => {
       if (e.target.closest('[data-forget]')) { await api.invoke('cache:delete', el.dataset.root); showWelcome(); return; }
-      if (!(await loadSaved(el.dataset.root))) toast(T`เปิดผลสแกนที่บันทึกไว้ไม่ได้ — ลองสแกนใหม่`, { kind: 'err' });
+      const big = +el.dataset.files > BIG_SCAN;
+      if (big) {
+        toast(T`กำลังเปิดผลสแกนขนาดใหญ่ (${fmtNum(+el.dataset.files)} ไฟล์) — อาจใช้เวลาประมาณ 1 นาที โปรแกรมจะหน่วงช่วงนี้`, { duration: 60000 });
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      if (!(await loadSaved(el.dataset.root, big))) toast(T`เปิดผลสแกนที่บันทึกไว้ไม่ได้ — ลองสแกนใหม่`, { kind: 'err' });
     };
   });
   $('drive-cards').innerHTML = drives.map((d, i) => `
@@ -227,6 +232,8 @@ function adopt(res) {
   const hint = document.querySelector('.view-hint');
   hint.classList.remove('fade'); setTimeout(() => hint.classList.add('fade'), 12000);
 }
+// Saved scans bigger than this are not reopened automatically — loading ~1.5M files blocks the UI for about a minute.
+const BIG_SCAN = 400000;
 async function loadSaved(root, quiet) {
   const res = await api.invoke('cache:load', root);
   if (!res || !res.root) return false;
@@ -253,7 +260,7 @@ async function showInfo() {
   const link = info.repo ? `https://github.com/${info.repo}` : '';
   htmlBox(`
     <div class="about">
-      <div class="prism-logo big"><i></i><i></i><i></i></div>
+      <div class="prism-logo big"><i></i><i></i><i></i><b class="lg"><svg viewBox="18 18 64 64" aria-hidden="true"><path d="M47 31 A21 21 0 1 0 68 52 H47 Z" fill="#fff"/><path d="M53 25 A21 21 0 0 1 74 46 H53 Z" fill="#fff"/></svg></b></div>
       <h3>Prism Size <small>v${esc(info.version)}</small></h3>
       <p class="about-purpose">${esc(PURPOSE)}</p>
       <dl class="kv">
@@ -308,6 +315,7 @@ async function showInfo() {
 async function boot() {
   translateDom(document.body);
   hydrateIcons();
+  setLook(savedLook());
   setTheme(savedTheme());
   startBackground($('bg'));
   views.tree = initTree(); views.treemap = initTreemap(); views.sunburst = initSunburst(); views.dashboard = initDashboard();
@@ -320,7 +328,28 @@ async function boot() {
   $('btn-newscan').onclick = showWelcome;
   $('btn-info').onclick = showInfo;
   themeIcon = () => { $('btn-theme').firstElementChild.innerHTML = icon(theme.dark ? 'day' : 'moon'); };
-  $('btn-theme').onclick = () => { setTheme(!theme.dark); themeIcon(); };
+  // appearance menu under the moon/sun: theme (light / dark) + style (glass / classic); picks apply at once, the menu stays open
+  const pop = $('theme-pop'), tbtn = $('btn-theme');
+  const syncPop = () => {
+    pop.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === 'dark') === theme.dark));
+    pop.querySelectorAll('[data-look]').forEach((b) => b.classList.toggle('on', (b.dataset.look === 'classic') === theme.classic));
+  };
+  closeThemePop = () => { pop.classList.add('hidden'); tbtn.classList.remove('open'); };
+  tbtn.onclick = () => {
+    if (!pop.classList.contains('hidden')) { closeThemePop(); return; }
+    hideCtx(); syncPop();
+    pop.classList.remove('hidden'); tbtn.classList.add('open');
+    placePop();
+  };
+  const placePop = () => {
+    const r = tbtn.getBoundingClientRect(), w = pop.offsetWidth;
+    pop.style.left = clamp(r.right - w + 8, 8, innerWidth - w - 8) + 'px';
+    pop.style.top = r.bottom + 12 + 'px';
+  };
+  pop.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { setTheme(b.dataset.mode === 'dark'); themeIcon(); syncPop(); }; });
+  pop.querySelectorAll('[data-look]').forEach((b) => { b.onclick = () => { setLook(b.dataset.look === 'classic'); syncPop(); }; });
+  addEventListener('pointerdown', (e) => { if (!pop.contains(e.target) && !tbtn.contains(e.target)) closeThemePop(); }, true);
+  addEventListener('resize', () => { if (!pop.classList.contains('hidden')) placePop(); }); // snap / maximise: follow the button
   themeIcon();
   // language tube: switching reloads the window; the saved scan brings everything straight back
   const ls = $('lang-switch');
@@ -378,7 +407,7 @@ async function boot() {
 
   addEventListener('keydown', (e) => {
     const typing = e.target.closest('input, textarea, select');
-    if (e.key === 'Escape') { hideCtx(); if (!typing) select(null); return; }
+    if (e.key === 'Escape') { if (!$('theme-pop').classList.contains('hidden')) { closeThemePop(); return; } hideCtx(); if (!typing) select(null); return; }
     if (e.ctrlKey && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undo(); return; }
     if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setView('search'); return; }
     if (e.key === 'F5') { e.preventDefault(); if (lastRoot) startScan(lastRoot); return; }
@@ -400,6 +429,11 @@ async function boot() {
   if (env.act.includes('proj')) { state.proj.media = state.proj.icon = true; $('proj-media').classList.add('on'); $('proj-icon').classList.add('on'); }
   if (env.act.includes('dark')) { setTheme(true); themeIcon(); }
   if (env.act.includes('light')) { setTheme(false); themeIcon(); }
+  // full press sequence (pointerdown → click), so the close-on-outside-press listener is exercised too
+  const press = (el) => { el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); el.click(); };
+  if (env.act.includes('themepop')) { press($('btn-theme')); }
+  if (env.act.includes('classic')) env.act.includes('themepop') ? press(document.querySelector('#theme-pop [data-look=classic]')) : setLook(true);
+  if (env.act.includes('glass')) env.act.includes('themepop') ? press(document.querySelector('#theme-pop [data-look=glass]')) : setLook(false);
   if (env.autoscan) {
     await startScan(env.autoscan);
     if (env.view) setView(env.view);
@@ -418,7 +452,8 @@ async function boot() {
     if (!env.nocache) {
       const saved = await api.invoke('cache:list');
       let want = ''; try { want = localStorage.getItem('prism.lastRoot') || ''; } catch { /* ignore */ }
-      const pick = saved.find((c) => c.root === want) || saved[0];
+      const small = saved.filter((c) => (c.files || 0) <= BIG_SCAN);
+      const pick = small.find((c) => c.root === want) || small[0];
       if (pick && await loadSaved(pick.root)) {
         let v = ''; try { v = localStorage.getItem('prism.view') || ''; localStorage.removeItem('prism.view'); } catch { /* ignore */ }
         if (v) setView(v);
@@ -426,6 +461,51 @@ async function boot() {
     }
     if (env.view) setView(env.view);
     if (env.act && env.act.includes('info')) showInfo();
+    if (env.act && env.act.includes('updfake')) window.__prismUpdFake = true;
   }
 }
 boot().catch((err) => { console.error(err); });
+
+/* >>> prism-update-nudge (tools/brand/apply-web.js) */
+{
+  // Checks GitHub quietly a few seconds after start (and every 6 h). New version → dot on Info + a chip that slides out
+  // once per version; clicking either opens Info already showing "Update now".
+  const btn = document.getElementById('btn-info'), SEEN = 'prism.updSeen';
+  let found = null;
+  const chipOut = (r) => {
+    let seen = null; try { seen = localStorage.getItem(SEEN); } catch {}
+    if (seen === r.latest || document.querySelector('.upd-chip')) return;
+    const chip = document.createElement('button');
+    chip.className = 'upd-chip';
+    chip.innerHTML = `<i></i><span>${T`มีเวอร์ชันใหม่ v${esc(r.latest)}`}</span><u>${T`(ตอนนี้ v${esc(r.current)})`}</u><b>${T`อัปเดต`}</b>`;
+    document.body.appendChild(chip);
+    const place = () => { const b = btn.getBoundingClientRect(); chip.style.top = `${b.bottom + 10}px`; chip.style.right = `${Math.max(8, innerWidth - b.right - 6)}px`; };
+    place(); addEventListener('resize', place);
+    requestAnimationFrame(() => requestAnimationFrame(() => chip.classList.add('show')));
+    const hide = () => { chip.classList.remove('show'); removeEventListener('resize', place); setTimeout(() => chip.remove(), 450); };
+    chip.onclick = () => { hide(); btn.click(); };
+    setTimeout(hide, 10000);
+  };
+  const check = async () => {
+    let r; try { r = window.__prismUpdFake ? { ok: true, hasUpdate: true, latest: '9.9.9', current: '1.0.0' } : await api.invoke('update:check'); } catch { return; } // __prismUpdFake = test hook (PRISM_ACT updfake)
+    if (!r || !r.ok || !r.hasUpdate) return;
+    const fresh = !found || found.latest !== r.latest;
+    found = r;
+    btn.classList.add('has-update');
+    if (fresh) btn.classList.remove('seen');
+    btn.title = T`มีเวอร์ชันใหม่ v${r.latest} — กดเพื่ออัปเดต`;
+    chipOut(r);
+  };
+  setTimeout(check, 4000);
+  setInterval(check, 6 * 3600e3);
+  btn.addEventListener('click', () => {
+    if (!found) return;
+    try { localStorage.setItem(SEEN, found.latest); } catch {}
+    btn.classList.add('seen');
+    document.querySelector('.upd-chip')?.classList.remove('show');
+    const t0 = performance.now();
+    const go = () => { const c = document.getElementById('about-check'); if (c && !c.disabled && c.isConnected) c.click(); else if (performance.now() - t0 < 2500) requestAnimationFrame(go); };
+    requestAnimationFrame(go);
+  });
+}
+/* <<< prism-update-nudge */

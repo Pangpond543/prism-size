@@ -24,15 +24,16 @@
   <!-- ───────────── title bar ───────────── -->
   <header id="titlebar" class="glass refract">
     <div class="brand tb-drag">
-      <div class="prism-logo"><i></i><i></i><i></i></div>
+      <div class="prism-logo"><i></i><i></i><i></i><b class="lg"><svg viewBox="18 18 64 64" aria-hidden="true"><path d="M47 31 A21 21 0 1 0 68 52 H47 Z" fill="#fff"/><path d="M53 25 A21 21 0 0 1 74 46 H53 Z" fill="#fff"/></svg></b></div>
       <span class="brand-name">Prism Size</span>
+      <span class="brand-sig" title="by 543">by 543</span>
     </div>
     <div id="crumbs" class="crumbs"></div>
     <div class="tb-drag tb-fill"></div>
     <div class="tb-actions">
       <button class="pill-btn" id="btn-newscan" title="สแกนตำแหน่งอื่น"><span data-icon="radar"></span><span>สแกนใหม่</span></button>
       <div class="lang-switch" id="lang-switch" title="ภาษา / Language"><i></i><button data-lang="th">TH</button><button data-lang="en">EN</button></div>
-      <button class="icon-btn" id="btn-theme" title="โหมดมืด / สว่าง"><span data-icon="moon"></span></button>
+      <button class="icon-btn" id="btn-theme" title="หน้าตาโปรแกรม: สว่าง / มืด · แก้ว / คลาสสิก"><span data-icon="moon"></span></button>
       <button class="icon-btn" id="btn-info" title="เกี่ยวกับ Prism Size"><span data-icon="info"></span></button>
       <div class="win-btns">
         <button id="win-min" title="ย่อ"><span data-icon="min"></span></button>
@@ -103,7 +104,7 @@
 <div id="welcome" class="overlay">
   <div class="welcome-inner">
     <div class="hero">
-      <div class="prism-logo big"><i></i><i></i><i></i></div>
+      <div class="prism-logo big"><i></i><i></i><i></i><b class="lg"><svg viewBox="18 18 64 64" aria-hidden="true"><path d="M47 31 A21 21 0 1 0 68 52 H47 Z" fill="#fff"/><path d="M53 25 A21 21 0 0 1 74 46 H53 Z" fill="#fff"/></svg></b></div>
       <h1>Prism Size</h1>
       <p>แผนที่แก้วของทุกไฟล์ในเครื่องคุณ — มองเห็น จับ ลาก และจัดระเบียบได้จริง</p>
     </div>
@@ -138,6 +139,13 @@
 <div id="tooltip" class="glass tip hidden"></div>
 <div id="ghost" class="glass ghost hidden"></div>
 <div id="ctx" class="glass ctx hidden"></div>
+<div id="theme-pop" class="glass ctx theme-pop hidden">
+  <div class="ctx-head">ธีม</div>
+  <div class="seg"><button data-mode="light"><span data-icon="day"></span><span>สว่าง</span></button><button data-mode="dark"><span data-icon="moon"></span><span>มืด</span></button></div>
+  <div class="ctx-head">สไตล์</div>
+  <div class="seg"><button data-look="glass"><span data-icon="sparkle"></span><span>แก้ว</span></button><button data-look="classic"><span data-icon="plain"></span><span>คลาสสิก</span></button></div>
+  <p class="theme-note">คลาสสิก: พื้นเรียบ ไม่มีแสงหักเหหรือแอนิเมชัน ใช้เครื่องน้อยกว่า</p>
+</div>
 <div id="toasts"></div>
 <div id="modal" class="overlay hidden"></div>
 

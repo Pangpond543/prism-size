@@ -87,8 +87,12 @@ export function startBackground(canvas) {
   tx = mx = canvas.width / 2; ty = my = canvas.height / 2;
   addEventListener('pointermove', (e) => { tx = e.clientX * SCALE; ty = (innerHeight - e.clientY) * SCALE; });
   const t0 = performance.now();
+  // classic look: the canvas is hidden and the loop stops completely (no GPU work); it restarts when glass comes back
+  const html = document.documentElement, classic = () => html.dataset.look === 'classic';
+  let raf = 0;
   const frame = () => {
-    requestAnimationFrame(frame);
+    if (classic()) { raf = 0; return; }
+    raf = requestAnimationFrame(frame);
     if (document.hidden) return;
     mx += (tx - mx) * 0.045; my += (ty - my) * 0.045; // light trails the pointer with inertia
     gl.uniform2f(uRes, canvas.width, canvas.height);
@@ -98,5 +102,10 @@ export function startBackground(canvas) {
     gl.uniform1f(uDark, dark);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
+  new MutationObserver(() => {
+    if (raf || classic()) return;
+    dark = html.dataset.theme === 'dark' ? 1 : 0; // the theme may have changed while we were stopped — no fade from a stale one
+    frame();
+  }).observe(html, { attributes: true, attributeFilter: ['data-look'] });
   frame();
 }

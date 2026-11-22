@@ -87,10 +87,26 @@ function scan({ root, keep = 24 }) {
 }
 
 /* ------------------------------------------------------------ duplicates */
+// Folders that hold installed programs, tools, caches and build output. Identical files in them are
+// normal (every app ships its own copy) and removing one breaks that app — never offer them.
+const PROTECTED_DIRS = new Set([
+  'appdata', 'program files', 'program files (x86)', 'programdata', 'windows', '$recycle.bin', 'system volume information',
+  'recovery', 'msocache', 'node_modules', '.git', '.svn', '.cargo', '.rustup', '.local', '.cache', '.codex', '.vscode', '.cursor',
+  '.npm', '.pnpm-store', '.nuget', '.gradle', '.m2', '.conda', 'anaconda3', 'miniconda3', '.venv', 'venv', 'site-packages',
+  '__pycache__', 'target', 'dist', 'build', 'out', 'bin', 'obj', 'packages', 'package cache', 'steamapps', 'windowsapps',
+]);
+// Program parts: executables, libraries, engine data. Deleting a "duplicate" of these breaks software.
+const PROTECTED_EXT = new Set([
+  '.exe', '.dll', '.sys', '.msi', '.msix', '.appx', '.node', '.so', '.dylib', '.pak', '.dat', '.asar', '.bin', '.lib', '.rmeta',
+  '.rlib', '.pdb', '.jar', '.pyd', '.ocx', '.drv', '.cab', '.wasm', '.tflite', '.onnx', '.pack',
+]);
+const isProtectedPath = (p) => p.toLowerCase().split(/[\\/]+/).some((seg) => PROTECTED_DIRS.has(seg));
+
 function dupes({ root, minSize = 1024 * 1024 }) {
+  if (isProtectedPath(root)) { done({ groups: [], scanned: 0, protectedRoot: true }); return; }
   const list = [];
   const stack = [root];
-  let seen = 0, last = 0;
+  let seen = 0, last = 0, skippedDirs = 0;
   while (stack.length) {
     const dir = stack.pop();
     let ents;
@@ -98,11 +114,16 @@ function dupes({ root, minSize = 1024 * 1024 }) {
     for (const e of ents) {
       if (e.isSymbolicLink()) continue;
       const full = join(dir, e.name);
-      if (e.isDirectory()) stack.push(full);
-      else if (e.isFile()) {
+      if (e.isDirectory()) {
+        if (PROTECTED_DIRS.has(e.name.toLowerCase())) skippedDirs++;
+        else stack.push(full);
+      } else if (e.isFile()) {
         seen++;
+        if (PROTECTED_EXT.has(path.extname(e.name).toLowerCase())) continue;
         try {
           const st = fs.statSync(full);
+          // online-only OneDrive placeholder: size is reported but nothing is on disk — hashing it would download the whole file
+          if (st.size >= 65536 && st.blocks === 0) continue;
           if (st.size >= minSize) list.push([full, st.size, Math.floor(st.mtimeMs / 1000)]);
         } catch { /* unreadable */ }
         if ((seen & 511) === 0 && Date.now() - last > 150) { last = Date.now(); post({ t: 'p', phase: 'walk', done: seen, cur: dir }); }
@@ -159,7 +180,7 @@ function dupes({ root, minSize = 1024 * 1024 }) {
     for (const a of m.values()) if (a.length > 1) groups.push({ size, files: a.map((f) => ({ path: f[0], m: f[2] })) });
   }
   groups.sort((a, b) => b.size * (b.files.length - 1) - a.size * (a.files.length - 1));
-  done({ groups: groups.slice(0, 500), scanned: seen });
+  done({ groups: groups.slice(0, 500), scanned: seen, skippedDirs });
 }
 
 /* ---------------------------------------------------------------- search */
